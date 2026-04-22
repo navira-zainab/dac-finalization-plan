@@ -328,3 +328,97 @@ Paige maintains `docs/.doc-inventory.yaml` tracking: `path`, `owner`, `docusauru
 7. Create `.github/workflows/docs-publish.yml` (Option A) or connect to Netlify/Vercel (Option B).
 8. Add Claude Code hook for auto sidebar refresh to `.claude/settings.json`.
 9. Create first sprint branch `docs/sprint-1` and assign content owners.
+
+---
+
+# Documentation Pipeline Architecture
+
+> **Source:** [Confluence page](https://expertflow-docs.atlassian.net/wiki/spaces/~63be65f02341bff4fff674c8/pages/1950220314/Documentation+Pipeline+Architecture)
+
+---
+
+## Overview
+
+There are **4 distinct pipelines**, each triggered by a different event and serving a different purpose.
+
+---
+
+## Pipeline 1 — Contribution Validation (PR Gate)
+
+**Trigger:** Every pull request that touches `docs/**`  
+**Purpose:** Catch problems before they reach production. Acts as the quality gate.
+
+| Stage | Checks |
+|-------|--------|
+| **Stage 1: Lint & Format** | markdownlint (heading hierarchy, list style), Prettier (consistent formatting), Frontmatter validation (title, slug present) |
+| **Stage 2: Content Quality** | Spell check (cspell with custom dictionary), Internal broken link check, No placeholder text (TODO, FIXME, TBD) |
+| **Stage 3: Build Verification** | Docusaurus build (`npm run build`), Fails fast if any page breaks the build |
+
+**Outcome:**
+- ✅ All pass → PR ready for human review
+- ❌ Any fail → PR blocked, author notified
+
+---
+
+## Pipeline 2 — Preview Deploy (PR Review Aid)
+
+**Trigger:** PR opened/updated (runs after Pipeline 1 passes)  
+**Purpose:** Reviewers see the rendered Docusaurus output — not raw Markdown — before approving.
+
+| Stage | Action |
+|-------|--------|
+| **Stage 1** | Build Docusaurus (preview mode) |
+| **Stage 2** | Deploy to staging environment (e.g. `docs-pr-123.vercel.app`) |
+| **Stage 3** | Post preview URL as PR comment |
+
+**Why this matters:** Reviewers catch formatting issues, broken images, and navigation problems that Markdown diffs hide.
+
+---
+
+## Pipeline 3 — Production Publish (Merge Pipeline)
+
+**Trigger:** Merge to `main` branch  
+**Purpose:** The authoritative publish step. Only runs on approved, merged content.
+
+| Stage | Action |
+|-------|--------|
+| **Stage 1** | Build Docusaurus (production) |
+| **Stage 2** | Full link check (internal + external) |
+| **Stage 3** | Deploy to production host (e.g. `docs.expertflow.com`) |
+| **Stage 4** | Post-deploy smoke test (verify homepage returns 200 OK) |
+| **Stage 5** | Notify team via Slack / email — "Docs updated" |
+
+---
+
+## Pipeline 4 — Scheduled Maintenance
+
+**Trigger:** Cron schedule (weekly, e.g. every Monday 08:00)  
+**Purpose:** Catches rot that no PR introduced — external links die, content goes stale.
+
+| Stage | Action |
+|-------|--------|
+| **Stage 1** | External link checker (links to 3rd-party sites, docs, APIs) |
+| **Stage 2** | Search index rebuild (if using Algolia DocSearch) |
+| **Stage 3** | Stale content report — flag pages not updated in 6+ months |
+| **Stage 4** | Open GitHub Issue automatically if failures are found |
+
+---
+
+## Where BMAD Fits
+
+BMAD-generated drafts in `_bmad-output/` are **not** auto-published. A human promotion step moves them into `docs/` and opens a PR — that PR then enters Pipeline 1 like any other contribution. This keeps AI-generated content subject to the same review gate as human-written content.
+
+---
+
+## Recommended Tooling Per Stage
+
+| Stage | Tool |
+|-------|------|
+| Markdown lint | `markdownlint-cli2` |
+| Spell check | `cspell` |
+| Internal links | `docusaurus build` (catches these natively) |
+| External links | `lychee` or `linkinator` |
+| Build | `docusaurus build` |
+| Preview deploy | Vercel (automatic per-PR previews, zero config) |
+| Production deploy | Vercel / GitHub Pages / S3+CloudFront |
+| Notifications | GitHub Actions → Slack webhook |
